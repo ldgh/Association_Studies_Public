@@ -6,13 +6,13 @@
 <img width="1920" height="1080" alt="Fluxograma GWAS - Joao Vitor(5)" src="https://github.com/user-attachments/assets/dad32e0e-fda8-45f8-8551-9137a0afb5aa" />
 
 ## Introdução  
-Este repositório fornece um guia prático para a condução de Estudos de Associação de Varredura Genômica (**GWAS**), com foco em:
+Este repositório contém uma descrição detalhada de todas as análises realizadas para a condução de Estudos de Associação de Varredura Genômica (**GWAS**). 
+As análises documentadas aqui incluem:
 
-- Controles de Qualidade para dados genéticos
-- Controles de Qualidade para dados imputados
-- Escolha de Covariáveis (*StepWise*) e Controle de Qualidade para Regressões
-- GWAS
-- Fine-mapping
+- [Controles de Qualidade para dados genéticos](#Controle-de-qualidade-para-dados-genéticos)
+- [Escolha de Covariáveis (*StepWise*) e Controle de Qualidade para Regressões](#Escolha-de-Covariáveis-(StepWise)-e-Controle-de-Qualidade-para-Regressões)
+- [GWAS](#GWAS)
+- [Fine-mapping](#Fine-mapping)
 
 ### Scripts:
 - Manhattan_plotting.R: padronização de saída e geração de imagens
@@ -35,19 +35,16 @@ Os arquivos genéticos devem ser processados utilizando os seguintes pipelines d
 - [`SAIGE`](https://saigegit.github.io/SAIGE-doc/)
 - [`HAIL`](https://hail.is/)
 
-### Controle de qualidade dados Genotipados
+# Controle de qualidade para dados genéticos 
 O controle de qualidade inicial dos dados genotipados se da inicialmente pelo pipeline do [`MosaiQC`](https://github.com/ldgh/MosaiQC-public)
 
-### Imputação: TOPMed
+## Imputação: TOPMed
 Nós utilizamos o painel de imputação do TOPMed para nossos dados genotipados. Alguns controles de qualidade antes de submeter os dados:
 - Colocar os dados na versão do genoma de referência Hg38
 - Conferir orientação da fita (se os alelos referências são os mesmos que o do genoma de referência)
 
 Para a segunda etapa, recomendo utilizar o software [`bcftools`](https://samtools.github.io/bcftools/bcftools.html) com o plugin [`fixref`](https://samtools.github.io/bcftools/howtos/plugin.fixref.html)
 
----
-> **Estamos trabalhando no nosso painel de imputação 👷🏿‍♂️👷🏿‍♂️👷🏿‍♂️**
----
 
 #### Controle de qualidade pós imputação
 Temos como objetivo avaliar a distribuição das estatísticas de teste (R² e ER²) e comparar os genótipos imputados com os genotipados.
@@ -246,7 +243,10 @@ O script Python gera dois arquivos principais:
   - SNPs_GWAS_Catalog.tsv: Lista as variantes filtradas que foram comparadas com o GWAS Catalog, buscando variantes próximas (exemplo: 25.000 pb). O resultado inclui 3.958 variantes associadas a fenótipos próximos.
 
 
-
 ### Cálculo de Poder estatístico das variantes associadas
+A partir do script Statistical_Power.R podemos calcular o poder estatístico da variante associada. O cálculo é feito a partir do pacote genpwr com a função calc.
 
-[em trabalho]
+```
+genpwr.calc(calc = "power", model = "linear", N = 1394, ES = (-0.43123),
+            Alpha = 0.00000005, MAF = c(0.45), sd_y = 1, Test.Model = "Additive")
+```

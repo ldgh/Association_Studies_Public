@@ -1,15 +1,174 @@
-# **Association Studies**
+# Association Studies
+**Idealizado por:** [Lucca V. Aguiar](https://github.com/luccav) e [Marcus Vinícuis](https://github.com/marcus0898)
 
-- [Introdução](#introdução)
-- [Bibliotecas](#bibliotecas)
-- [Explicação e Arquivos de Input](#explicação-e-arquivos-de-input)
-- [Exemplo de Análise](#exemplo-de-análise)
+**Com auxílio de:** [Ivan G. Cruz](https://github.com/IvanGomesCruz) e [Pedro H. F. Baptista](https://github.com/p-baptista).
+
+<img width="1920" height="1080" alt="Fluxograma GWAS - Joao Vitor(5)" src="https://github.com/user-attachments/assets/dad32e0e-fda8-45f8-8551-9137a0afb5aa" />
+
+## Introdução  
+Este repositório fornece um guia prático para a condução de Estudos de Associação de Varredura Genômica (**GWAS**), com foco em:
+
+- Controles de Qualidade para dados genéticos
+- Controles de Qualidade para dados imputados
+- Escolha de Covariáveis (*StepWise*) e Controle de Qualidade para Regressões
+- GWAS
+- Fine-mapping
+
+### Scripts:
+- Manhattan_plotting.R: padronização de saída e geração de imagens
+- CQ_imputation: controle de qualidade para dados imputados
+- Step_Wise_model.R: escolha de modelo de regressão e CQ
+- filter.py: Análise pós associação, escolha de variante-líder
+- search.py: 
+
+### Pré-requisitos: Pipelines 
+Os arquivos genéticos devem ser processados utilizando os seguintes pipelines desenvolvidos pelo **Laboratório de Diversidade Genética Humana (LDGH)**:
+
+- [`MosaiQC`](https://github.com/ldgh/MosaiQC-public): Controle de qualidade inicial dos dados genéticos.
+- [`3A`](https://github.com/ldgh/3A-public): Análise de ancestralidade da coorte.
+- [`NAToRA`](https://github.com/ldgh/NAToRA_Public): Análise de kinship da coorte.
+- [`Annotation Tool`](https://github.com/ldgh/-Annotation_Tool): Anotação de variantes.
+
+### Pré-requisitos: Softwares 
+- [`Plink`](https://www.cog-genomics.org/plink/2.0/) 
+- [`GTCA`](https://github.com/jianyangqt/gcta)
+- [`SAIGE`](https://saigegit.github.io/SAIGE-doc/)
+- [`HAIL`](https://hail.is/)
+
+### Controle de qualidade dados Genotipados
+O controle de qualidade inicial dos dados genotipados se da inicialmente pelo pipeline do [`MosaiQC`](https://github.com/ldgh/MosaiQC-public)
+
+### Imputação: TOPMed
+Nós utilizamos o painel de imputação do TOPMed para nossos dados genotipados. Alguns controles de qualidade antes de submeter os dados:
+- Colocar os dados na versão do genoma de referência Hg38
+- Conferir orientação da fita (se os alelos referências são os mesmos que o do genoma de referência)
+
+Para a segunda etapa, recomendo utilizar o software [`bcftools`](https://samtools.github.io/bcftools/bcftools.html) com o plugin [`fixref`](https://samtools.github.io/bcftools/howtos/plugin.fixref.html)
+
+---
+> **Estamos trabalhando no nosso painel de imputação 👷🏿‍♂️👷🏿‍♂️👷🏿‍♂️**
+---
+
+#### Controle de qualidade pós imputação
+Temos como objetivo avaliar a distribuição das estatísticas de teste (R² e ER²) e comparar os genótipos imputados com os genotipados.
+
+Para comparar os genótipos, é necessário inicialmente identificar as variantes consenso entre os arquivos. Para isso, pode-se utilizar a função `bcftools isec`.
+```
+bcftools isec /path/File1_Indexed.vcf.gz /path/File2_Indexed.vcf.gz -Oz -p /path/Output_Dir/
+```
+Uma abordagem alternativa seria filtrar por rsID. Já a filtragem por posição não é adequada, pois o arquivo imputado pode conter múltiplas variantes na mesma posição genômica, mas com alelos alternativos distintos. Como consequência, ao filtrar apenas pela posição, o número de variantes resultante pode ser artificialmente maior do que o conjunto original, comprometendo a comparação.
+Exemplo:
+```
+#CHROM  POS     ID      	  REF     ALT     QUAL    FILTER  INFO    																			FORMAT
+chr1    975721  rs3748588     C       T       .       .       TYPED;IMPUTED;AF=0.0478942;MAF=0.0478942;AVG_CS=0.999253;R2=0.984937;ER2=0.667264	GT:HDS:GP:DS
+chr1    975721  .       	  CG      C       .       .       IMPUTED;AF=1.04022e-06;MAF=1.04022e-06;AVG_CS=0.999999;R2=0.000998961				GT:HDS:GP:DS
+```
+Criado os arquivos vcfs 0002 e 0003, o pipeline irá transformar em hail matrix para facilitar a comparação. 
+Dessa forma teremos 3 outputs, com as seguintes colunas:
+- Sample_mismatches.csv: IID, n_diff, n_same, n_missing
+- rsID_mismatches.csv: locus, alleles, rsid, n_mismatches
+- rsID_mismatch_details.csv: locus, alleles, rsid, n_mismatches, Typed, Imputed, R2, ER2
+
+Sample_mismatches.csv nos informa quantas posições por indivíduo que foram trocadas (legal ver a distribuição)
+rsID_mismatches.csv nos informa todas as posições em que houveram trocas de genótipo.
+Assim como o anterior, o arquivo rsID_mismatch_details.csv só contém as posições em que houveram alguma troca de genótipio, e está ordenado pelas posições em que mais houveram trocas (não há peso, se um indiíviduo 0/0 mudou para 1/0 ou 1/1 conta somente como uma mudança). Nesse arquivo algumas posições estão 
+
+## Escolha de Covariáveis (*StepWise*) e Controle de Qualidade para Regressões
+A seleção de covariáveis é feita por meio do script stepwise, que permite duas abordagens:
+- **Foward step**: o fenótipo é testado individualmente com cada covariável disponível, e a covariável que melhora mais o modelo é adicionada à próxima iteração.
+- **Backward step**: as covariáveis não obrigatórias são removidas uma a uma, avaliando-se o impacto de cada remoção na qualidade do modelo.
+
+Covariaveis obrigatórias para o modelo são maleaveis, mas são como base Idade, Sexo, e os Componentes Principais (PCs) genéticos.
+Para comparação é utilizado *Likelihood-ratio test* (LRT) e *Bayesian Information Criterion* (BIC), com modelo de *Maximum Likelihood* (ML). Determinado o modelo final, é refeita a estimativa com *Restricted Maximum Likelihood* (REML), pacote **lmer4qtl**.
+
+### Escolha de Componentes Principais
+Similarmente ao *StepWise* é realizado a escolha de números de PCs com base em sua significância. 
+É realizado também a análise dos PCs para vermos se não representa alguma região genômica de alta variabilidade ou se esta clusterizando famílias, onde ambos os casos não são adequados para corrigir estruturação populacional.
+
+#### Bibliotecas
+O script é realizado em R >= v.4 utilizando as seguintes bibliotecas:
+- lme4qtl
+- readr
+- dplyr
+- MASS
+- DHARMa
+- MuMIn
+
+### Controle de Qualidade da Regressão
+Com o modelo estimado, é realizado a análise da regressão com auxílio dos gráficos diagnósticos.  
+É estimado o R² marginal e condicional, se possuir efeitos aleatórios no modelo (NAKAGAWA; SCHIELZETH, 2013).
+
+## Controle de qualidade pré estudo de associação
+Inicia-se com o pré-processamento com o `MosaiQC`. Posteriormente, aplicam-se os seguintes filtros, de acordo com o tipo de análise:
+
+#### Fenótipos Contínuos  
+- `MAF > 0.01`  
+- `HWE p-value > 1e-6`
+
+#### Análise Caso-Controle  
+**Para casos:**  
+- `MAF > 0.001`  
+- `HWE p-value > 1e-10`
+
+**Para controles:**  
+- `MAF > 0.01`  
+- `HWE p-value > 1e-6`
 
 
+## GWAS
+Utilizamos o software GCTA (prentendemos mover para o SAIGE). Inicialmente criamos a *Genetic Relationship Matrix* (GRM) pelo próprio software. Deve-se aplicar o filtro de MAF nesta etapa. Aqui, estamos criando uma matrix cheia, mas se preferir, pode criar uma matrix esparsa, mas ai tem que estipular o *Cutoff* de *relatdness*.
+```
+gcta64 --bfile /caminha/para/os/arquivos/genéticos --make-grm --out /caminho/output/`
+```
+Para transformar o arquivo em texto para o script de *StepWise*, adicionar a flag:
+```
+--make-grm-gz
+```
+Se os dados forem muito grandes, é possível optar por criar uma GRM separadamente para cada cromossomo e, posteriormente, unificá-las em um único arquivo. Para isso, deve-se criar um arquivo .txt contendo o caminho de todas as GRMs correspondentes a cada cromossomo.
+```
+gcta64 --bfile test --make-grm-part 100 1 --thread-num 5 --out /output/path/test
+```
+```
+gcta64 --mgrm /path/todos_os_grm/multi_grm.txt --make-grm --out /path/output
+```
 
-## Introdução
-Este repositório contém um conjunto de scripts desenvolvidos por **LUCCA V. AGUIAR** e **MARCUS V. G. ANTUNES**, com o objetivo de:
+Com a escolha das cováriaveis e números de PC's escolhido posteriormente, é relizado o GWAS:
 
+---
+> **Nota 1:**
+> Se o NAToRA identificar clusters familiares, o pesquisador pode escolher entre:
+> - Remover os indivíduos aparentados (o NAToRA indica quais);
+> - Manter e usar um software de associação que incorpore a *Genetic Relationship Matrix* (GRM) como efeito aleatório.
+
+> A escolha da metodologia influenciará os PCs, bem como a seleção do software utilizado para a sua geração.
+---
+
+---
+>> **Nota 2:**  
+Os limiares de MAF e HWE devem ser ajustados conforme o tamanho amostral da coorte.  
+É recomendado remover variantes com **MAC (Minor Allele Count) < 2**, já que variantes extremamente raras podem comprometer a análise de regressão e aumentar a chance de falsos positivos, especialmente em amostras pequenas.
+>> **Nota 3:** Para dados imputados se recomenda um cutoff de R²> 0,8.
+---
+Atualmente o GWAS esta sendo executado com o software GCTA, mas temos planos para incluir TRACTOR e SAIGE na linha de trabalho.
+```
+	gcta64 --bfile /home/Desktop/Plink_files/Quality_Control/Autossomic_Quality_Control \
+--mlma \
+--pheno /home/Desktop/Fenótipo/pheno.tsv \
+--qcovar /home/Desktop/Covar/gcta/Quantitative_covar \
+--covar /home/Desktop/Covar/gcta/Qualitative_covar \
+--threads 10 \
+--grm /home/Desktop/GRM_GCTA/GRM \
+--out /home/Desktop/tentativa_vinte/Age+Sex/Exemplo_output 
+```
+
+## Fine-mapping
+Com o GWAS *Summary Statistics* é realizado:
+
+- Anotação das variantes com o software Annotation.
+- Criação Manhattan e QQ plot
+
+
+### Padronização de saídas, Plotagem e Comparação de bancos de dados
 - Auxiliar e padronizar a saída dos testes de associação genética.
 - Automatizar a plotação de imagens para análise de associação (Manhattan e QQ plots).
 - Padronizar a busca e comparação com o banco de dados GWAS Catalog, identificando variantes próximas fisicamente.
@@ -17,9 +176,7 @@ Este repositório contém um conjunto de scripts desenvolvidos por **LUCCA V. AG
 A filtragem e organização dos resultados são realizadas em Python, enquanto a plotação é feita em R devido à qualidade gráfica e disponibilidade de pacotes especializados. Para eficiência computacional, apenas variantes com p-valor menor ou igual ao limite estabelecido no config.ini serão processadas na plotação e comparação com o GWAS Catalog.
 
 
-
-## Bibliotecas
-
+#### Bibliotecas
 Python:
 - pandas
 - configparser (ConfigParser)
@@ -33,8 +190,7 @@ R:
 
 
   
-## Explicação e Arquivos de Input
-
+#### Explicação e Arquivos de Input
 Configuração do config.ini
 
 O arquivo config.ini deve ser configurado antes da execução do script. Os seguintes parâmetros precisam ser definidos:
@@ -62,7 +218,7 @@ Certifique-se de padronizar os nomes das colunas antes de executar o script.
 
 
 
-## Exemplo de Análise
+#### Exemplo de Análise
 Execução do Script:
 
 
@@ -89,3 +245,8 @@ O script Python gera dois arquivos principais:
   - filtered_pvalues.txt: Contém as variantes que passaram pelo critério de filtragem do p-valor. No exemplo abaixo, com P_VALUE = 1e-03, foram selecionadas 9 variantes.
   - SNPs_GWAS_Catalog.tsv: Lista as variantes filtradas que foram comparadas com o GWAS Catalog, buscando variantes próximas (exemplo: 25.000 pb). O resultado inclui 3.958 variantes associadas a fenótipos próximos.
 
+
+
+### Cálculo de Poder estatístico das variantes associadas
+
+[em trabalho]
